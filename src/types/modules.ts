@@ -51,7 +51,7 @@ export const SUPER_ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = 
   Dashboard: ["read"],
   "Audit Log": ["read"],
   "Low Stock Alerts": ["read"],
-  Search: [],
+  Search: ["read"],
   "Database Monitoring": ["read", "write", "update", "delete"],
   "Cache Management": ["read", "write", "update", "delete"],
   Support: ["read", "write", "update", "delete"],
@@ -71,7 +71,7 @@ export const ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   Dashboard: ["read"],
   "Audit Log": ["read"],
   "Low Stock Alerts": ["read"],
-  Search: [],
+  Search: ["read"],
   "Database Monitoring": [],
   "Cache Management": [],
   Support: ["read", "write", "update", "delete"],
@@ -95,7 +95,7 @@ export const SHOP_OWNER_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   "Database Monitoring": [],
   "Cache Management": [],
   Support: [],
-  "Raw Materials": ["read", "write", "update", "delete"],
+  "Raw Materials": [],
   Suppliers: [],
 };
 

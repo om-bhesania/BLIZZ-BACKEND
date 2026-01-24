@@ -19,6 +19,7 @@
     "pm2:startup": "pm2-startup install",
     "setup": "ts-node setup.ts",
     "role": "ts-node setupRoles.ts",
+    "sync:modules": "ts-node syncModules.ts",
     "migrate:shopIds": "ts-node src/scripts/migrateShopIds.ts",
     "migrate": "prisma migrate dev",
     "generate": "prisma generate",

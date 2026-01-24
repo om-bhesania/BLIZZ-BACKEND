@@ -1,6 +1,7 @@
 import { RequestHandler, Router } from "express";
 import { register } from "../../controllers/Auth/Register";
-import { login, logout, refreshToken, listUsers, getRoles, deleteUser } from "../../controllers/Auth/Login";
+import { login, logout, refreshToken, listUsers, getRoles, deleteUser, getUserPerms } from "../../controllers/Auth/Login";
+import { authenticateToken } from "../../middlewares/auth";
 const authRoutes = Router();
 
 /**
@@ -243,5 +244,46 @@ authRoutes.get("/roles", getRoles as RequestHandler);
  *         description: Internal server error
  */
 authRoutes.delete("/users/:publicId", deleteUser as RequestHandler);
+
+/**
+ * @swagger
+ * /api/auth/user-perms:
+ *   get:
+ *     summary: Get current user permissions
+ *     description: Retrieve the current authenticated user's permissions based on their role. Called on page refresh to sync permissions.
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Permissions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 permissions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       module:
+ *                         type: string
+ *                       actions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                 role:
+ *                   type: string
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+authRoutes.get("/user-perms", authenticateToken as RequestHandler, getUserPerms as RequestHandler);
 
 export { authRoutes };

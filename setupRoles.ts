@@ -76,6 +76,7 @@ async function setupRoles() {
 
     // Create permissions for Admin
     const adminModules = Object.keys(DEFAULT_PERMISSIONS.Admin) as ModuleName[];
+    console.log('adminModules', adminModules);
     for (const module of adminModules) {
       const actions = DEFAULT_PERMISSIONS.Admin[module];
       const permissions = actions.map((action: any) => ({
@@ -105,7 +106,7 @@ async function setupRoles() {
           action: { in: actions },
         },
       });
-
+console.log('createdPermissionRecords', createdPermissionRecords);
       // Create role-permission connections
       await prisma.rolePermission.createMany({
         data: createdPermissionRecords.map((permission) => ({

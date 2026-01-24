@@ -17,6 +17,8 @@ exports.SYSTEM_MODULES = [
     "Database Monitoring",
     "Cache Management",
     "Support",
+    "Raw Materials",
+    "Suppliers",
 ];
 exports.SUPER_ADMIN_MODULE_PERMISSIONS = {
     Inventory: ["read", "write", "update", "delete"],
@@ -30,10 +32,12 @@ exports.SUPER_ADMIN_MODULE_PERMISSIONS = {
     Dashboard: ["read"],
     "Audit Log": ["read"],
     "Low Stock Alerts": ["read"],
-    Search: [],
+    Search: ["read"],
     "Database Monitoring": ["read", "write", "update", "delete"],
     "Cache Management": ["read", "write", "update", "delete"],
     Support: ["read", "write", "update", "delete"],
+    "Raw Materials": ["read", "write", "update", "delete"],
+    Suppliers: ["read", "write", "update", "delete"],
 };
 exports.ADMIN_MODULE_PERMISSIONS = {
     Inventory: ["read", "write", "update", "delete"],
@@ -47,10 +51,12 @@ exports.ADMIN_MODULE_PERMISSIONS = {
     Dashboard: ["read"],
     "Audit Log": ["read"],
     "Low Stock Alerts": ["read"],
-    Search: [],
+    Search: ["read"],
     "Database Monitoring": [],
     "Cache Management": [],
     Support: ["read", "write", "update", "delete"],
+    "Raw Materials": ["read", "write", "update", "delete"],
+    Suppliers: ["read", "write", "update", "delete"],
 };
 exports.SHOP_OWNER_MODULE_PERMISSIONS = {
     Inventory: [],
@@ -68,6 +74,8 @@ exports.SHOP_OWNER_MODULE_PERMISSIONS = {
     "Database Monitoring": [],
     "Cache Management": [],
     Support: [],
+    "Raw Materials": [],
+    Suppliers: [],
 };
 exports.Factory_Employee_MODULE_PERMISSIONS = {
     Inventory: ["read"],
@@ -85,6 +93,8 @@ exports.Factory_Employee_MODULE_PERMISSIONS = {
     "Database Monitoring": [],
     "Cache Management": [],
     Support: [],
+    "Raw Materials": [],
+    Suppliers: [],
 };
 exports.Outlet_Employee_MODULE_PERMISSIONS = {
     Inventory: [],
@@ -102,6 +112,8 @@ exports.Outlet_Employee_MODULE_PERMISSIONS = {
     "Database Monitoring": [],
     "Cache Management": [],
     Support: [],
+    "Raw Materials": [],
+    Suppliers: [],
 };
 exports.DEFAULT_PERMISSIONS = {
     Admin: exports.ADMIN_MODULE_PERMISSIONS,

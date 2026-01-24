@@ -59,8 +59,6 @@ model Shop {
   stockTransactions     StockTransaction[]
   stockAdjustments      StockAdjustmentRequest[]
   holidays              Holiday[]
-  rawMaterialInventory  RawMaterialInventory[]
-  rawMaterialTransactions RawMaterialTransaction[]
 }
 
 model User {
@@ -92,6 +90,19 @@ model Category {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   products    Product[]
+}
+
+model Unit {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  symbol      String?   // e.g., "kg", "L", "m"
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([name])
+  @@index([isActive])
 }
 
 model Flavor {
@@ -133,7 +144,8 @@ model Product {
   shopInventory       ShopInventory[]
   stockTransactions   StockTransaction[]
   stockAdjustments    StockAdjustmentRequest[]
-  productRecipes      ProductRecipe[]
+  recipes             Recipe[]
+  productions         ProductionBatch[]
 }
 
 model PackagingType {
@@ -486,19 +498,6 @@ model Holiday {
 
 // Raw Material Management Models
 
-model RawMaterialCategory {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  materials   RawMaterial[]
-  
-  @@index([name])
-  @@index([isActive])
-}
-
 model Supplier {
   id          String   @id @default(uuid())
   name        String
@@ -508,106 +507,130 @@ model Supplier {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  materials   RawMaterial[]
   
   @@index([name])
   @@index([isActive])
 }
 
 model RawMaterial {
-  id                String   @id @default(uuid())
-  name              String
-  categoryId        String
-  supplierId        String
-  unit              String   // kg, pieces, liters, ml, etc.
-  unitPrice         Decimal  @db.Decimal(10, 2)
-  isPerishable      Boolean  @default(false)
-  shelfLife         Int?     // in days for perishable items
-  isActive          Boolean  @default(true)
-  createdBy         String   // User ID who created this material
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  unit        String    // Standardized unit: pieces, kg, g, liters, ml, mm, cm, m, etc.
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   
-  category          RawMaterialCategory @relation(fields: [categoryId], references: [id])
-  supplier          Supplier @relation(fields: [supplierId], references: [id])
-  inventories       RawMaterialInventory[]
-  transactions      RawMaterialTransaction[]
-  productRecipes    ProductRecipe[]
+  inventory   RawMaterialInventory[]
+  recipeItems RecipeItem[]
+  transactions RawMaterialTransaction[]
   
   @@index([name])
-  @@index([categoryId])
-  @@index([supplierId])
-  @@index([isPerishable])
   @@index([isActive])
+  @@index([unit])
 }
 
 model RawMaterialInventory {
-  id              String   @id @default(uuid())
-  shopId          String?
-  materialId      String
-  currentStock    Decimal  @default(0) @db.Decimal(10, 3)
-  minStockLevel   Decimal  @default(0) @db.Decimal(10, 3)
-  maxStockLevel   Decimal? @db.Decimal(10, 3)
-  batchNumber     String?  // For perishable tracking
-  expiryDate      DateTime? // For perishable items
-  lastUpdated     DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(uuid())
+  rawMaterialId String
+  quantity      Decimal  @db.Decimal(10, 3)  // Current stock
+  minStockLevel Decimal  @db.Decimal(10, 3)  // For low stock alerts
+  location      String   @default("Factory")   // Factory, Storeroom
+  lastUpdated   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   
-  shop            Shop? @relation(fields: [shopId], references: [id])
-  material        RawMaterial @relation(fields: [materialId], references: [id])
-  transactions    RawMaterialTransaction[]
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  transactions  RawMaterialTransaction[]
   
-  @@unique([shopId, materialId])
-  @@index([shopId])
-  @@index([materialId])
-  @@index([currentStock])
-  @@index([expiryDate])
+  @@unique([rawMaterialId, location])
+  @@index([rawMaterialId])
+  @@index([location])
+  @@index([quantity])
+  @@index([minStockLevel])
 }
 
-model ProductRecipe {
+model Recipe {
+  id          String   @id @default(uuid())
+  productId   String   // Links to Product
+  name        String?  // Optional recipe name (e.g., "Standard Recipe", "Premium Recipe")
+  description String?
+  duration    Int?     // Production duration in minutes
+  yield       Decimal? // Optional: Output quantity (e.g., 500 cups)
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false) // One default recipe per product
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items       RecipeItem[]
+  productions ProductionBatch[]
+  
+  @@index([productId])
+  @@index([isActive])
+  @@index([isDefault])
+}
+
+model RecipeItem {
   id              String   @id @default(uuid())
-  productId       String
-  materialId      String
-  quantityNeeded  Decimal  @db.Decimal(10, 3) // Amount needed per product unit
-  unit            String   // Unit of measurement
+  recipeId        String
+  rawMaterialId   String
+  quantity        Decimal  @db.Decimal(10, 3)  // Quantity needed
+  unit            String   // Same as raw material unit (standardized)
+  notes           String?  // Technical notes
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
-  product         Product @relation(fields: [productId], references: [id])
-  material        RawMaterial @relation(fields: [materialId], references: [id])
+  recipe          Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  rawMaterial     RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
   
-  @@unique([productId, materialId])
+  @@unique([recipeId, rawMaterialId])
+  @@index([recipeId])
+  @@index([rawMaterialId])
+}
+
+model ProductionBatch {
+  id          String   @id @default(uuid())
+  recipeId    String
+  productId   String
+  quantity    Decimal  @db.Decimal(10, 3) // Quantity produced (same as inventory quantity)
+  producedAt  DateTime @default(now())
+  createdBy   String   // User ID
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  recipe      Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  transactions RawMaterialTransaction[]
+  
+  @@index([recipeId])
   @@index([productId])
-  @@index([materialId])
+  @@index([producedAt])
+  @@index([createdBy])
 }
 
 model RawMaterialTransaction {
   id              String   @id @default(uuid())
-  materialId      String
-  shopId          String?
-  inventoryId     String?  // Reference to inventory record
-  transactionType String   // PURCHASE, CONSUMPTION, ADJUSTMENT, TRANSFER, WASTE
-  quantity        Decimal  @db.Decimal(10, 3)
-  unit            String
-  unitPrice       Decimal? @db.Decimal(10, 2)
-  totalAmount     Decimal? @db.Decimal(10, 2)
-  reason          String?
-  referenceId     String?  // Reference to billing, restock, etc.
-  batchNumber     String?  // For perishable tracking
-  expiryDate      DateTime? // For perishable items
+  rawMaterialId   String
+  inventoryId     String?
+  productionBatchId String?
+  type            String   // PRODUCTION_DEDUCTION, MANUAL_ADJUSTMENT, RESTOCK, INITIAL_STOCK
+  quantity        Decimal  @db.Decimal(10, 3)  // Positive for additions, negative for deductions
+  previousStock   Decimal  @db.Decimal(10, 3)
+  newStock        Decimal  @db.Decimal(10, 3)
   notes           String?
-  createdBy       String   // User who performed the transaction
+  createdBy       String   // User ID
   createdAt       DateTime @default(now())
   
-  material        RawMaterial @relation(fields: [materialId], references: [id])
-  shop            Shop? @relation(fields: [shopId], references: [id])
-  inventory       RawMaterialInventory? @relation(fields: [inventoryId], references: [id])
+  rawMaterial     RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  inventory       RawMaterialInventory? @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+  productionBatch ProductionBatch? @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
   
-  @@index([materialId])
-  @@index([shopId])
+  @@index([rawMaterialId])
   @@index([inventoryId])
-  @@index([transactionType])
+  @@index([productionBatchId])
+  @@index([type])
   @@index([createdAt(sort: Desc)])
-  @@index([referenceId])
+  @@index([createdBy])
 }

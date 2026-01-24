@@ -1,25 +1,20 @@
-import express, { RequestHandler } from "express";
-import {
-    getRawMaterials,
-    getRawMaterialById,
-    createRawMaterial,
-    updateRawMaterial,
-    deleteRawMaterial,
-} from "../controllers/rawMaterialController";
-import { authenticateToken } from "../middlewares/auth";
-
-const router = express.Router();
-
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const rawMaterialController_1 = require("../controllers/rawMaterialController");
+const auth_1 = require("../middlewares/auth");
+const router = express_1.default.Router();
 // Apply authentication middleware to all routes
-router.use(authenticateToken as any);
-
+router.use(auth_1.authenticateToken);
 /**
  * @swagger
  * tags:
  *   name: Raw Materials
  *   description: Raw material management endpoints (Admin only)
  */
-
 /**
  * @swagger
  * /api/raw-materials:
@@ -60,8 +55,7 @@ router.use(authenticateToken as any);
  *       409:
  *         description: Raw material name already exists
  */
-router.post('/', createRawMaterial);
-
+router.post('/', rawMaterialController_1.createRawMaterial);
 /**
  * @swagger
  * /api/raw-materials:
@@ -77,8 +71,7 @@ router.post('/', createRawMaterial);
  *       401:
  *         description: Unauthorized
  */
-router.get('/', getRawMaterials);
-
+router.get('/', rawMaterialController_1.getRawMaterials);
 /**
  * @swagger
  * /api/raw-materials/{id}:
@@ -103,8 +96,7 @@ router.get('/', getRawMaterials);
  *       404:
  *         description: Raw material not found
  */
-router.get('/:id', getRawMaterialById as RequestHandler);
-
+router.get('/:id', rawMaterialController_1.getRawMaterialById);
 /**
  * @swagger
  * /api/raw-materials/{id}:
@@ -152,8 +144,7 @@ router.get('/:id', getRawMaterialById as RequestHandler);
  *       404:
  *         description: Raw material not found
  */
-router.put('/:id', updateRawMaterial);
-
+router.put('/:id', rawMaterialController_1.updateRawMaterial);
 /**
  * @swagger
  * /api/raw-materials/{id}:
@@ -180,7 +171,5 @@ router.put('/:id', updateRawMaterial);
  *       404:
  *         description: Raw material not found
  */
-router.delete('/:id', deleteRawMaterial);
-
-export default router;
-
+router.delete('/:id', rawMaterialController_1.deleteRawMaterial);
+exports.default = router;

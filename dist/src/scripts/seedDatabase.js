@@ -15,6 +15,29 @@ async function seedDatabase() {
             console.log('⚠️  Database already contains data. Skipping seeding.');
             return;
         }
+        // Create default units
+        console.log('📏 Creating default units...');
+        const defaultUnits = [
+            { name: 'Pieces', symbol: 'pieces', description: 'Count/quantity unit' },
+            { name: 'Kilograms', symbol: 'kg', description: 'Weight unit - kilograms' },
+            { name: 'Grams', symbol: 'g', description: 'Weight unit - grams' },
+            { name: 'Liters', symbol: 'liters', description: 'Volume unit - liters' },
+            { name: 'Milliliters', symbol: 'ml', description: 'Volume unit - milliliters' },
+            { name: 'Meters', symbol: 'm', description: 'Length unit - meters' },
+            { name: 'Centimeters', symbol: 'cm', description: 'Length unit - centimeters' },
+            { name: 'Millimeters', symbol: 'mm', description: 'Length unit - millimeters' },
+        ];
+        // Check if units already exist
+        const existingUnits = await prisma.unit.count();
+        if (existingUnits === 0) {
+            await Promise.all(defaultUnits.map((unit) => prisma.unit.create({
+                data: unit,
+            })));
+            console.log(`✅ Created ${defaultUnits.length} default units.`);
+        }
+        else {
+            console.log('⚠️  Units already exist. Skipping unit creation.');
+        }
         // Create sample categories
         console.log('📦 Creating categories...');
         const categories = await Promise.all([

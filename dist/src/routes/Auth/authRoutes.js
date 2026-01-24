@@ -4,6 +4,7 @@ exports.authRoutes = void 0;
 const express_1 = require("express");
 const Register_1 = require("../../controllers/Auth/Register");
 const Login_1 = require("../../controllers/Auth/Login");
+const auth_1 = require("../../middlewares/auth");
 const authRoutes = (0, express_1.Router)();
 exports.authRoutes = authRoutes;
 /**
@@ -239,3 +240,43 @@ authRoutes.get("/roles", Login_1.getRoles);
  *         description: Internal server error
  */
 authRoutes.delete("/users/:publicId", Login_1.deleteUser);
+/**
+ * @swagger
+ * /api/auth/user-perms:
+ *   get:
+ *     summary: Get current user permissions
+ *     description: Retrieve the current authenticated user's permissions based on their role. Called on page refresh to sync permissions.
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Permissions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 permissions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       module:
+ *                         type: string
+ *                       actions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                 role:
+ *                   type: string
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+authRoutes.get("/user-perms", auth_1.authenticateToken, Login_1.getUserPerms);

@@ -36,11 +36,26 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUser = exports.getRoles = exports.listUsers = exports.refreshToken = exports.logout = exports.login = void 0;
+exports.getUserPerms = exports.deleteUser = exports.getRoles = exports.listUsers = exports.refreshToken = exports.logout = exports.login = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("../../config/client");
 const logger_1 = require("../../utils/logger");
+const modules_1 = require("../../types/modules");
+// Helper function to get user permissions based on role
+const getUserPermissions = (roleName) => {
+    const rolePermissions = modules_1.DEFAULT_PERMISSIONS[roleName];
+    if (!rolePermissions) {
+        console.warn(`No permissions found for role: ${roleName}`);
+        return [];
+    }
+    console.log("rolePermissions", rolePermissions);
+    // Transform the permissions object into an array of { module, actions } format
+    return Object.entries(rolePermissions).map(([module, actions]) => ({
+        module,
+        actions: actions,
+    })).filter(p => p.actions.length > 0); // Only include modules with at least one action
+};
 const generateToken = (user, secret, expiresIn) => {
     const payload = {
         id: user.id,
@@ -57,6 +72,7 @@ const generateToken = (user, secret, expiresIn) => {
 const login = async (req, res) => {
     const { email, password } = req.body;
     logger_1.logger.auth.login(email, false); // Start with false, will update to true on success
+    console.log("email", email);
     if (!email) {
         logger_1.logger.warn("Login attempt without email");
         return res.status(400).json({ message: "Email is required" });
@@ -69,11 +85,15 @@ const login = async (req, res) => {
         const user = await client_1.prisma.user.findFirst({
             where: { email },
         });
+        console.log("user", user);
         if (!user) {
             logger_1.logger.auth.login(email, false);
             return res.status(401).json({ message: "Invalid email or password" });
         }
         const isValidPassword = await bcryptjs_1.default.compare(password, user.password);
+        console.log("Password from request:", password);
+        console.log("Hashed password from DB:", user.password);
+        console.log("Password comparison result:", isValidPassword);
         if (!isValidPassword) {
             logger_1.logger.auth.login(email, false);
             return res.status(401).json({ message: "Invalid email or password" });
@@ -90,6 +110,8 @@ const login = async (req, res) => {
         });
         logger_1.logger.auth.login(email, true);
         // Login notifications removed - not needed for UI
+        // Get permissions based on user's role
+        const permissions = getUserPermissions(user.role || "");
         res.status(200).json({
             status: "success",
             message: "Login successful",
@@ -103,6 +125,7 @@ const login = async (req, res) => {
                 email: user.email,
                 contact: user.contact,
                 publicId: user.publicId,
+                permissions: permissions,
             },
         });
     }
@@ -163,6 +186,8 @@ const refreshToken = async (req, res) => {
             return res.status(401).json({ message: "User not found" });
         }
         const accessToken = generateToken(user, process.env.JWT_SECRET, "6h");
+        // Get permissions based on user's role
+        const permissions = getUserPermissions(user.role || "");
         res.status(200).json({
             status: "success",
             token: accessToken,
@@ -174,6 +199,7 @@ const refreshToken = async (req, res) => {
                 email: user.email,
                 contact: user.contact,
                 publicId: user.publicId,
+                permissions: permissions,
             },
         });
     }
@@ -227,39 +253,39 @@ const deleteUser = async (req, res) => {
         const userToDelete = await client_1.prisma.user.findUnique({
             where: { publicId },
             include: {
-                managedShops: true
-            }
+                managedShops: true,
+            },
         });
         if (!userToDelete) {
             return res.status(404).json({
                 error: "User not found",
-                message: "The user you're trying to delete does not exist"
+                message: "The user you're trying to delete does not exist",
             });
         }
         // Prevent self-deletion
         if (requestingUser.publicId === publicId) {
             return res.status(400).json({
                 error: "Cannot delete yourself",
-                message: "You cannot delete your own account"
+                message: "You cannot delete your own account",
             });
         }
         // Check if user is an admin or has permission to delete users
-        if (requestingUser.role !== 'Admin') {
+        if (requestingUser.role !== "Admin") {
             return res.status(403).json({
                 error: "Insufficient permissions",
-                message: "Only administrators can delete users"
+                message: "Only administrators can delete users",
             });
         }
         // Check if user has managed shops (prevent deletion if they manage shops)
         if (userToDelete.managedShops && userToDelete.managedShops.length > 0) {
             return res.status(400).json({
                 error: "Cannot delete user with managed shops",
-                message: "Please reassign shop management before deleting this user"
+                message: "Please reassign shop management before deleting this user",
             });
         }
         // Delete the user
         const deletedUser = await client_1.prisma.user.delete({
-            where: { publicId }
+            where: { publicId },
         });
         logger_1.logger.auth.userDeleted(publicId, requestingUser.publicId);
         res.json({
@@ -267,8 +293,8 @@ const deleteUser = async (req, res) => {
             deletedUser: {
                 name: userToDelete.name,
                 email: userToDelete.email,
-                publicId: userToDelete.publicId
-            }
+                publicId: userToDelete.publicId,
+            },
         });
     }
     catch (error) {
@@ -279,16 +305,47 @@ const deleteUser = async (req, res) => {
             res.status(500).json({
                 error: "Failed to delete user",
                 message: error.message,
-                details: error.stack
+                details: error.stack,
             });
         }
         else {
             res.status(500).json({
                 error: "Failed to delete user",
                 message: "An unknown error occurred while deleting the user.",
-                details: JSON.stringify(error)
+                details: JSON.stringify(error),
             });
         }
     }
 };
 exports.deleteUser = deleteUser;
+// Get current user permissions - called on page refresh to sync permissions
+const getUserPerms = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ message: "Not authenticated" });
+        }
+        const user = await client_1.prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                role: true,
+                roleId: true,
+            },
+        });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        const permissions = getUserPermissions(user.role || "");
+        res.status(200).json({
+            status: "success",
+            permissions: permissions,
+            role: user.role,
+        });
+    }
+    catch (error) {
+        logger_1.logger.error("Error fetching user permissions", error);
+        res.status(500).json({ message: "Failed to fetch permissions" });
+    }
+};
+exports.getUserPerms = getUserPerms;

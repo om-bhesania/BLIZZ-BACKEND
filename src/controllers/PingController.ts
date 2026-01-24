@@ -4,6 +4,7 @@ import { prisma as sharedPrisma } from "../config/client";
 import { yellowBG } from "console-log-colors";
 import { AuthRequest } from "../middlewares/auth";
 import jwt from "jsonwebtoken";
+import { SYSTEM_MODULES } from "../types/modules";
 
 const prisma = sharedPrisma ?? new PrismaClient();
 
@@ -66,8 +67,9 @@ export const ping = async (req: AuthRequest & Request, res: Response): Promise<v
       },
     });
 
-    // Group permissions by module(resource) with allowed actions; limit to known modules
-    const allowedModules = new Set(["Home", "Inventory", "Billing", "Shop", "Employee"]);
+    // Group permissions by module(resource) with allowed actions
+    // Use SYSTEM_MODULES from modules.ts to include all valid modules
+    const allowedModules = new Set<string>(SYSTEM_MODULES);
     const grouped: Record<string, Set<string>> = {};
     for (const rp of user.Role?.permissions || []) {
       const resource = rp.permission.resource;

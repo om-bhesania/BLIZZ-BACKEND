@@ -8,6 +8,7 @@ const client_1 = require("@prisma/client");
 const client_2 = require("../config/client");
 const console_log_colors_1 = require("console-log-colors");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const modules_1 = require("../types/modules");
 const prisma = client_2.prisma ?? new client_1.PrismaClient();
 const ping = async (req, res) => {
     // Resolve publicId from req.user (preferred) or decode token
@@ -63,8 +64,9 @@ const ping = async (req, res) => {
                 isActive: true,
             },
         });
-        // Group permissions by module(resource) with allowed actions; limit to known modules
-        const allowedModules = new Set(["Home", "Inventory", "Billing", "Shop", "Employee"]);
+        // Group permissions by module(resource) with allowed actions
+        // Use SYSTEM_MODULES from modules.ts to include all valid modules
+        const allowedModules = new Set(modules_1.SYSTEM_MODULES);
         const grouped = {};
         for (const rp of user.Role?.permissions || []) {
             const resource = rp.permission.resource;

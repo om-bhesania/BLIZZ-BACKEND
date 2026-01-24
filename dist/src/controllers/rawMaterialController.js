@@ -1,62 +1,61 @@
-import { Request, Response } from 'express';
-import { prisma } from '../config/client';
-import { emitUserNotification } from './NotificationsController';
-import { logActivity } from '../utils/audit';
-import { isAdmin } from '../config/roles';
-
-export const createRawMaterial = async (req: Request, res: Response) => {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteRawMaterial = exports.updateRawMaterial = exports.getRawMaterialById = exports.getRawMaterials = exports.createRawMaterial = void 0;
+const client_1 = require("../config/client");
+const NotificationsController_1 = require("./NotificationsController");
+const audit_1 = require("../utils/audit");
+const roles_1 = require("../config/roles");
+const createRawMaterial = async (req, res) => {
     try {
         const { name, description, unit } = req.body;
-        const userId = (req as any).user?.publicId as string | undefined;
-        const userRole = (req as any).user?.role;
-
+        const userId = req.user?.publicId;
+        const userRole = req.user?.role;
         // Only Admin can create raw materials
-        if (!isAdmin(userRole)) {
+        if (!(0, roles_1.isAdmin)(userRole)) {
             res.status(403).json({ error: 'Admin access required' });
             return;
         }
-
-        const rawMaterial = await prisma.rawMaterial.create({
+        const rawMaterial = await client_1.prisma.rawMaterial.create({
             data: {
                 name,
                 ...(description !== undefined && { description }),
                 unit,
             },
         });
-
         try {
             if (userId) {
-                const created = await prisma.notification.create({
-                    data: { 
-                        userId, 
-                        type: 'RAW_MATERIAL_CREATED', 
-                        message: `Created raw material: ${rawMaterial.name}` 
+                const created = await client_1.prisma.notification.create({
+                    data: {
+                        userId,
+                        type: 'RAW_MATERIAL_CREATED',
+                        message: `Created raw material: ${rawMaterial.name}`
                     },
                 });
-                await emitUserNotification(userId, { event: 'created', notification: created });
+                await (0, NotificationsController_1.emitUserNotification)(userId, { event: 'created', notification: created });
             }
-        } catch (notificationError) {
+        }
+        catch (notificationError) {
             console.error('Notification error:', notificationError);
         }
-
         res.status(201).json(rawMaterial);
-        await logActivity({
-            type: 'raw_material', 
-            action: 'created', 
-            entity: 'RawMaterial', 
+        await (0, audit_1.logActivity)({
+            type: 'raw_material',
+            action: 'created',
+            entity: 'RawMaterial',
             entityId: rawMaterial.id,
-            userId, 
+            userId,
             metadata: { name, unit }
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error creating raw material:', error);
         res.status(500).json({ error: 'Failed to create raw material' });
     }
 };
-
-export const getRawMaterials = async (req: Request, res: Response) => {
+exports.createRawMaterial = createRawMaterial;
+const getRawMaterials = async (req, res) => {
     try {
-        const rawMaterials = await prisma.rawMaterial.findMany({
+        const rawMaterials = await client_1.prisma.rawMaterial.findMany({
             where: {
                 isActive: true,
             },
@@ -70,16 +69,17 @@ export const getRawMaterials = async (req: Request, res: Response) => {
             }
         });
         res.json(rawMaterials);
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching raw materials:', error);
         res.status(500).json({ error: 'Failed to fetch raw materials' });
     }
 };
-
-export const getRawMaterialById = async (req: Request, res: Response) => {
+exports.getRawMaterials = getRawMaterials;
+const getRawMaterialById = async (req, res) => {
     try {
         const { id } = req.params;
-        const rawMaterial = await prisma.rawMaterial.findUnique({
+        const rawMaterial = await client_1.prisma.rawMaterial.findUnique({
             where: { id },
             include: {
                 inventory: true,
@@ -98,26 +98,25 @@ export const getRawMaterialById = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Raw material not found' });
         }
         res.json(rawMaterial);
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error fetching raw material:', error);
         res.status(500).json({ error: 'Failed to fetch raw material' });
     }
 };
-
-export const updateRawMaterial = async (req: Request, res: Response) => {
+exports.getRawMaterialById = getRawMaterialById;
+const updateRawMaterial = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, description, unit, isActive } = req.body;
-        const userId = (req as any).user?.publicId as string | undefined;
-        const userRole = (req as any).user?.role;
-
+        const userId = req.user?.publicId;
+        const userRole = req.user?.role;
         // Only Admin can update raw materials
-        if (!isAdmin(userRole)) {
+        if (!(0, roles_1.isAdmin)(userRole)) {
             res.status(403).json({ error: 'Admin access required' });
             return;
         }
-
-        const rawMaterial = await prisma.rawMaterial.update({
+        const rawMaterial = await client_1.prisma.rawMaterial.update({
             where: { id },
             data: {
                 ...(name !== undefined && { name }),
@@ -126,83 +125,81 @@ export const updateRawMaterial = async (req: Request, res: Response) => {
                 ...(isActive !== undefined && { isActive }),
             },
         });
-
         try {
             if (userId) {
-                const updated = await prisma.notification.create({
-                    data: { 
-                        userId, 
-                        type: 'RAW_MATERIAL_UPDATED', 
-                        message: `Updated raw material: ${rawMaterial.name}` 
+                const updated = await client_1.prisma.notification.create({
+                    data: {
+                        userId,
+                        type: 'RAW_MATERIAL_UPDATED',
+                        message: `Updated raw material: ${rawMaterial.name}`
                     },
                 });
-                await emitUserNotification(userId, { event: 'created', notification: updated });
+                await (0, NotificationsController_1.emitUserNotification)(userId, { event: 'created', notification: updated });
             }
-        } catch (notificationError) {
+        }
+        catch (notificationError) {
             console.error('Notification error:', notificationError);
         }
-
         res.json(rawMaterial);
-        await logActivity({
-            type: 'raw_material', 
-            action: 'updated', 
-            entity: 'RawMaterial', 
+        await (0, audit_1.logActivity)({
+            type: 'raw_material',
+            action: 'updated',
+            entity: 'RawMaterial',
             entityId: rawMaterial.id,
-            userId, 
+            userId,
             metadata: { name, unit }
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error updating raw material:', error);
         res.status(500).json({ error: 'Failed to update raw material' });
     }
 };
-
-export const deleteRawMaterial = async (req: Request, res: Response) => {
+exports.updateRawMaterial = updateRawMaterial;
+const deleteRawMaterial = async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = (req as any).user?.publicId as string | undefined;
-        const userRole = (req as any).user?.role;
-
+        const userId = req.user?.publicId;
+        const userRole = req.user?.role;
         // Only Admin can delete raw materials
-        if (!isAdmin(userRole)) {
+        if (!(0, roles_1.isAdmin)(userRole)) {
             res.status(403).json({ error: 'Admin access required' });
             return;
         }
-
-        await prisma.rawMaterial.update({
+        await client_1.prisma.rawMaterial.update({
             where: { id },
             data: {
                 isActive: false,
             },
         });
-
         try {
             if (userId) {
-                const deleted = await prisma.notification.create({
-                    data: { 
-                        userId, 
-                        type: 'RAW_MATERIAL_DEACTIVATED', 
-                        message: `Deactivated raw material: ${id}` 
+                const deleted = await client_1.prisma.notification.create({
+                    data: {
+                        userId,
+                        type: 'RAW_MATERIAL_DEACTIVATED',
+                        message: `Deactivated raw material: ${id}`
                     },
                 });
-                await emitUserNotification(userId, { event: 'created', notification: deleted });
+                await (0, NotificationsController_1.emitUserNotification)(userId, { event: 'created', notification: deleted });
             }
-        } catch (notificationError) {
+        }
+        catch (notificationError) {
             console.error('Notification error:', notificationError);
         }
-
         res.json({ message: 'Raw material deactivated successfully' });
-        await logActivity({
-            type: 'raw_material', 
-            action: 'deleted', 
-            entity: 'RawMaterial', 
+        await (0, audit_1.logActivity)({
+            type: 'raw_material',
+            action: 'deleted',
+            entity: 'RawMaterial',
             entityId: id,
-            userId, 
+            userId,
             metadata: { rawMaterialId: id }
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error deleting raw material:', error);
         res.status(500).json({ error: 'Failed to delete raw material' });
     }
 };
-
+exports.deleteRawMaterial = deleteRawMaterial;

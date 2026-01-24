@@ -11,7 +11,8 @@ exports.ROLES = [
             "Billing",
             "Shop",
             "Home",
-            "Employee"
+            "Employee",
+            "Raw Materials"
         ]
     },
     {
@@ -21,7 +22,8 @@ exports.ROLES = [
         permissions: [
             "Billing",
             "Shop Inventory",
-            "Home"
+            "Home",
+            "Raw Materials"
         ]
     }
 ];

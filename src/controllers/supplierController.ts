@@ -62,18 +62,6 @@ export const getSuppliers = async (req: Request, res: Response) => {
             },
             orderBy: {
                 name: 'asc'
-            },
-            include: {
-                materials: {
-                    where: { isActive: true },
-                    select: {
-                        id: true,
-                        name: true,
-                        unit: true,
-                        unitPrice: true,
-                        isPerishable: true
-                    }
-                }
             }
         });
         res.json(suppliers);
@@ -88,19 +76,6 @@ export const getSupplierById = async (req: Request, res: Response) => {
         const { id } = req.params;
         const supplier = await prisma.supplier.findUnique({
             where: { id },
-            include: {
-                materials: {
-                    where: { isActive: true },
-                    include: {
-                        category: true,
-                        inventories: {
-                            include: {
-                                shop: true
-                            }
-                        }
-                    }
-                },
-            },
         });
         if (!supplier) {
             return res.status(404).json({ error: 'Supplier not found' });

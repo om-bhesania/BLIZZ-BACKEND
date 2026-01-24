@@ -645,6 +645,33 @@ class SocketServiceImpl {
             }
         });
     }
+    // Raw Material specific alerts
+    broadcastRawMaterialLowStockAlert(data) {
+        // Emit to admin room for raw material alerts
+        this.emitToRole('Admin', 'raw_material:low_stock', data);
+        // If it's shop-specific, also emit to that shop
+        if (data.shopId) {
+            this.emitToRoom(`shop:${data.shopId}`, 'raw_material:low_stock', data);
+        }
+        // Also emit as notification
+        this.emitToRole('Admin', 'notification:new', {
+            event: 'raw_material_low_stock',
+            notification: {
+                type: 'RAW_MATERIAL_LOW_STOCK',
+                message: `${data.materialName} is running low (${data.currentStock} ${data.unit})`,
+                timestamp: new Date().toISOString(),
+                data
+            }
+        });
+    }
+    broadcastRawMaterialInventoryUpdate(data) {
+        // Emit to admin room
+        this.emitToRole('Admin', 'raw_material:inventory_update', data);
+        // If it's shop-specific, also emit to that shop
+        if (data.shopId) {
+            this.emitToRoom(`shop:${data.shopId}`, 'raw_material:inventory_update', data);
+        }
+    }
     broadcastSystemHealth(data) {
         this.emitToAll('system:health', data);
         // Also emit as notification for system issues

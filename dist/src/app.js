@@ -13,6 +13,7 @@ const authRoutes_1 = require("./routes/Auth/authRoutes");
 const PingRoute_1 = __importDefault(require("./routes/PingRoute"));
 const roleRoutes_1 = __importDefault(require("./routes/Roles/roleRoutes"));
 const categoryRoutes_1 = __importDefault(require("./routes/categoryRoutes"));
+const unitRoutes_1 = __importDefault(require("./routes/unitRoutes"));
 const flavourRoutes_1 = __importDefault(require("./routes/flavourRoutes"));
 const productRoutes_1 = __importDefault(require("./routes/productRoutes"));
 const shopRoutes_1 = __importDefault(require("./routes/shopRoutes"));
@@ -36,6 +37,11 @@ const chatRequestRoutes_1 = __importDefault(require("./routes/chatRequestRoutes"
 const paymentRoutes_1 = __importDefault(require("./routes/paymentRoutes"));
 const stockAdjustmentRoutes_1 = __importDefault(require("./routes/stockAdjustmentRoutes"));
 const enhancedDashboardRoutes_1 = __importDefault(require("./routes/enhancedDashboardRoutes"));
+const supplierRoutes_1 = __importDefault(require("./routes/supplierRoutes"));
+const rawMaterialRoutes_1 = __importDefault(require("./routes/rawMaterialRoutes"));
+const rawMaterialInventoryRoutes_1 = __importDefault(require("./routes/rawMaterialInventoryRoutes"));
+const recipeRoutes_1 = __importDefault(require("./routes/recipeRoutes"));
+const productionRoutes_1 = __importDefault(require("./routes/productionRoutes"));
 const swaggerConfig_1 = __importDefault(require("./swaggerConfig"));
 const apiKeyMiddleware_1 = __importDefault(require("./middlewares/apiKeyMiddleware"));
 // Load environment variables
@@ -57,6 +63,8 @@ const corsOptions = {
             "https://shreefood.co.in",
             "https://www.shreefood.co.in",
             "https://www.api.shreefood.co.in",
+            "https://backend.shreefood.co.in",
+            "https://www.backend.shreefood.co.in",
         ];
         // Log CORS requests for debugging
         console.log(`[CORS] Request from origin: ${origin}`);
@@ -135,6 +143,7 @@ const apiMiddleware = apiKeyMiddleware_1.default;
 app.use("/api/auth", authRoutes_1.authRoutes);
 app.use("/api/roles", roleRoutes_1.default);
 app.use("/api/categories", categoryRoutes_1.default);
+app.use("/api/units", unitRoutes_1.default);
 app.use("/api/products", productRoutes_1.default);
 app.use("/api/flavours", flavourRoutes_1.default);
 app.use("/api/shops", shopRoutes_1.default);
@@ -158,6 +167,11 @@ app.use("/api/database", databaseRoutes_1.default);
 app.use("/api/cache", cacheRoutes_1.default);
 app.use("/api/holidays", holidayRoutes_1.default);
 app.use("/api/enhanced-dashboard", enhancedDashboardRoutes_1.default);
+app.use("/api/suppliers", supplierRoutes_1.default);
+app.use("/api/raw-materials", rawMaterialRoutes_1.default);
+app.use("/api/raw-material-inventory", rawMaterialInventoryRoutes_1.default);
+app.use("/api/recipes", recipeRoutes_1.default);
+app.use("/api/production", productionRoutes_1.default);
 app.use("/api/ping", PingRoute_1.default);
 // Global Error Handler
 app.use(errorHandlers_1.errorHandler);

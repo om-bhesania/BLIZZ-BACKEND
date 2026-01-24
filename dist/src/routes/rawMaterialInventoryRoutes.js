@@ -1,25 +1,20 @@
-import express, { RequestHandler } from "express";
-import {
-    getRawMaterialInventories,
-    getRawMaterialInventoryById,
-    getLowStockItems,
-    initializeInventory,
-    updateRawMaterialInventory,
-} from "../controllers/rawMaterialInventoryController";
-import { authenticateToken } from "../middlewares/auth";
-
-const router = express.Router();
-
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const rawMaterialInventoryController_1 = require("../controllers/rawMaterialInventoryController");
+const auth_1 = require("../middlewares/auth");
+const router = express_1.default.Router();
 // Apply authentication middleware to all routes
-router.use(authenticateToken as any);
-
+router.use(auth_1.authenticateToken);
 /**
  * @swagger
  * tags:
  *   name: Raw Material Inventory
  *   description: Raw material inventory management endpoints (Admin only)
  */
-
 /**
  * @swagger
  * /api/raw-material-inventory:
@@ -41,8 +36,7 @@ router.use(authenticateToken as any);
  *       401:
  *         description: Unauthorized
  */
-router.get('/', getRawMaterialInventories);
-
+router.get('/', rawMaterialInventoryController_1.getRawMaterialInventories);
 /**
  * @swagger
  * /api/raw-material-inventory/low-stock:
@@ -58,8 +52,7 @@ router.get('/', getRawMaterialInventories);
  *       401:
  *         description: Unauthorized
  */
-router.get('/low-stock', getLowStockItems);
-
+router.get('/low-stock', rawMaterialInventoryController_1.getLowStockItems);
 /**
  * @swagger
  * /api/raw-material-inventory/{id}:
@@ -84,8 +77,7 @@ router.get('/low-stock', getLowStockItems);
  *       404:
  *         description: Inventory not found
  */
-router.get('/:id', getRawMaterialInventoryById as RequestHandler);
-
+router.get('/:id', rawMaterialInventoryController_1.getRawMaterialInventoryById);
 /**
  * @swagger
  * /api/raw-material-inventory:
@@ -128,8 +120,7 @@ router.get('/:id', getRawMaterialInventoryById as RequestHandler);
  *       403:
  *         description: Forbidden - Admin access required
  */
-router.post('/', initializeInventory as RequestHandler);
-
+router.post('/', rawMaterialInventoryController_1.initializeInventory);
 /**
  * @swagger
  * /api/raw-material-inventory/{id}:
@@ -177,7 +168,5 @@ router.post('/', initializeInventory as RequestHandler);
  *       404:
  *         description: Inventory not found
  */
-router.put('/:id', updateRawMaterialInventory as RequestHandler);
-
-export default router;
-
+router.put('/:id', rawMaterialInventoryController_1.updateRawMaterialInventory);
+exports.default = router;
