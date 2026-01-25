@@ -28,6 +28,7 @@ export const createUnit = async (req: Request, res: Response) => {
             userId: (req as any).user?.publicId, metadata: { name, symbol }
         });
     } catch (error) {
+        console.log('error', error);
         res.status(500).json({ error: 'Failed to create unit' });
     }
 };
@@ -44,6 +45,7 @@ export const getUnits = async (req: Request, res: Response) => {
         });
         res.json(units);
     } catch (error) {
+        console.log("error", error);
         res.status(500).json({ error: 'Failed to fetch units' });
     }
 };
