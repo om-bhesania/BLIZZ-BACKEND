@@ -7,7 +7,6 @@ const NotificationsController_1 = require("../NotificationsController");
 const audit_1 = require("../../utils/audit");
 const socketService_1 = require("../../services/socketService");
 const roles_1 = require("../../config/roles");
-const packagingTypeController_1 = require("../packagingTypeController");
 const createProduct = async (req, res) => {
     try {
         const { sku, name, description, categoryId, packagingTypeId, quantityInLiters, unitSize, unitMeasurement, unitPrice, costPrice, retailPrice, totalStock, minStockLevel, barcode, imageUrl, flavorId, } = req.body;
@@ -243,8 +242,6 @@ const updateProduct = async (req, res) => {
         const existingProduct = await client_1.prisma.product.findUnique({
             where: { id },
         });
-        const getPackagingTypesList = await (0, packagingTypeController_1.getPackagingTypes)({ query: {}, user: req.user }, {});
-        console.log("Packaging Types List:", getPackagingTypesList);
         if (!existingProduct) {
             return res.status(404).json({ error: "Product not found" });
         }
@@ -262,17 +259,17 @@ const updateProduct = async (req, res) => {
             const flavor = await client_1.prisma.flavor.findUnique({
                 where: { id: flavorId },
             });
-            // If packagingTypeId is provided, validate exists
-            if (req.body.packagingTypeId) {
-                const pkg = await client_1.prisma.packagingType.findUnique({
-                    where: { id: req.body.packagingTypeId },
-                });
-                if (!pkg) {
-                    return res.status(400).json({ error: "Invalid packaging type ID" });
-                }
-            }
             if (!flavor) {
                 return res.status(400).json({ error: "Invalid flavor ID" });
+            }
+        }
+        // If packagingTypeId is provided, validate exists
+        if (packagingTypeId) {
+            const pkg = await client_1.prisma.packagingType.findUnique({
+                where: { id: packagingTypeId },
+            });
+            if (!pkg) {
+                return res.status(400).json({ error: "Invalid packaging type ID" });
             }
         }
         // If SKU is changed, check it's not already in use
@@ -354,12 +351,31 @@ const updateProduct = async (req, res) => {
     }
     catch (error) {
         logger_1.logger.error("Error updating product:", error);
+        console.error("Full error details:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        // Check for specific Prisma errors
         if (error.code === "P2002") {
             return res
                 .status(400)
                 .json({ error: "A product with this SKU already exists" });
         }
-        res.status(500).json({ error: "Failed to update product" });
+        if (error.code === "P2003") {
+            return res.status(400).json({
+                error: "Invalid foreign key reference",
+                details: error.meta
+            });
+        }
+        if (error.code === "P2025") {
+            return res.status(404).json({
+                error: "Product not found",
+                details: error.meta
+            });
+        }
+        // Return more detailed error for debugging
+        res.status(500).json({
+            error: "Failed to update product",
+            message: error.message || "Unknown error",
+            code: error.code || "UNKNOWN"
+        });
     }
 };
 exports.updateProduct = updateProduct;

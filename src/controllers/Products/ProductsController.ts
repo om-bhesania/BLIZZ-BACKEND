@@ -5,7 +5,7 @@ import { emitUserNotification } from "../NotificationsController";
 import { logActivity } from "../../utils/audit";
 import { getSocketService } from "../../services/socketService";
 import { isAdmin } from "../../config/roles";
-import { getPackagingTypes } from "../packagingTypeController";
+
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const {
@@ -294,11 +294,7 @@ export const updateProduct = async (req: Request, res: Response) => {
     const existingProduct = await prisma.product.findUnique({
       where: { id },
     });
-    const getPackagingTypesList = await getPackagingTypes(
-      { query: {}, user: (req as any).user } as Request,
-      {} as Response
-    );
-    console.log("Packaging Types List:", getPackagingTypesList);
+    
     if (!existingProduct) {
       return res.status(404).json({ error: "Product not found" });
     }
@@ -319,18 +315,19 @@ export const updateProduct = async (req: Request, res: Response) => {
       const flavor = await prisma.flavor.findUnique({
         where: { id: flavorId },
       });
-      // If packagingTypeId is provided, validate exists
-      if ((req.body as any).packagingTypeId) {
-        const pkg = await (prisma as any).packagingType.findUnique({
-          where: { id: (req.body as any).packagingTypeId },
-        });
-        if (!pkg) {
-          return res.status(400).json({ error: "Invalid packaging type ID" });
-        }
-      }
-
+      
       if (!flavor) {
         return res.status(400).json({ error: "Invalid flavor ID" });
+      }
+    }
+    
+    // If packagingTypeId is provided, validate exists
+    if (packagingTypeId) {
+      const pkg = await (prisma as any).packagingType.findUnique({
+        where: { id: packagingTypeId },
+      });
+      if (!pkg) {
+        return res.status(400).json({ error: "Invalid packaging type ID" });
       }
     }
 
@@ -416,12 +413,35 @@ export const updateProduct = async (req: Request, res: Response) => {
     res.json(product);
   } catch (error) {
     logger.error("Error updating product:", error);
+    console.error("Full error details:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    
+    // Check for specific Prisma errors
     if ((error as any).code === "P2002") {
       return res
         .status(400)
         .json({ error: "A product with this SKU already exists" });
     }
-    res.status(500).json({ error: "Failed to update product" });
+    
+    if ((error as any).code === "P2003") {
+      return res.status(400).json({ 
+        error: "Invalid foreign key reference",
+        details: (error as any).meta 
+      });
+    }
+    
+    if ((error as any).code === "P2025") {
+      return res.status(404).json({ 
+        error: "Product not found",
+        details: (error as any).meta 
+      });
+    }
+    
+    // Return more detailed error for debugging
+    res.status(500).json({ 
+      error: "Failed to update product",
+      message: (error as any).message || "Unknown error",
+      code: (error as any).code || "UNKNOWN"
+    });
   }
 };
 

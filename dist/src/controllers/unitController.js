@@ -31,6 +31,7 @@ const createUnit = async (req, res) => {
         });
     }
     catch (error) {
+        console.log('error', error);
         res.status(500).json({ error: 'Failed to create unit' });
     }
 };
@@ -48,6 +49,7 @@ const getUnits = async (req, res) => {
         res.json(units);
     }
     catch (error) {
+        console.log("error", error);
         res.status(500).json({ error: 'Failed to fetch units' });
     }
 };

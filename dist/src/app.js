@@ -56,7 +56,6 @@ const corsOptions = {
             "http://localhost:8080",
             "http://127.0.0.1:8080",
             "http://127.0.0.1:5173",
-            "https://s3l06km6-5173.inc1.devtunnels.ms",
             "https://blizz.shreefood.co.in",
             "https://blizz.shreefood.co.in/",
             "https://api.shreefood.co.in",
@@ -65,6 +64,8 @@ const corsOptions = {
             "https://www.api.shreefood.co.in",
             "https://backend.shreefood.co.in",
             "https://www.backend.shreefood.co.in",
+            "https://kt43kr00-5173.inc1.devtunnels.ms/",
+            "https://kt43kr00-5173.inc1.devtunnels.ms",
         ];
         // Log CORS requests for debugging
         console.log(`[CORS] Request from origin: ${origin}`);
