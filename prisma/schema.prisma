@@ -175,14 +175,16 @@ model ShopInventory {
 }
 
 model RestockRequest {
-  id              String   @id @default(uuid())
-  shopId          String
-  productId       String
-  requestedAmount Int
-  status          String   @default("pending")
-  requestType     String   @default("RESTOCK") // RESTOCK | INVENTORY_ADD
-  notes           String?
-  hidden          Boolean  @default(false)
+  id                  String   @id @default(uuid())
+  shopId              String
+  productId           String
+  requestedAmount     Int
+  status              String   @default("pending")
+  requestType         String   @default("RESTOCK") // RESTOCK | INVENTORY_ADD
+  /** Same UUID for line items submitted together (e.g. multi-product inventory add) */
+  submissionBatchId   String?
+  notes               String?
+  hidden              Boolean  @default(false)
   paymentMethod   String?  // upfront, credit
   paymentStatus   String   @default("pending") // pending, paid, verified, rejected
   receiptPath     String?  // Path to uploaded receipt
@@ -201,6 +203,7 @@ model RestockRequest {
   @@index([productId])
   @@index([status])
   @@index([paymentStatus])
+  @@index([submissionBatchId])
   @@index([createdAt(sort: Desc)])
 }
 

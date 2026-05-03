@@ -11,7 +11,14 @@ import { updateFactoryStockWithNotifications } from "./Products/ProductsControll
 // Create restock request
 export const createRestockRequest = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { shopId, productId, requestedAmount, notes, requestType = "RESTOCK" } = req.body;
+    const {
+      shopId,
+      productId,
+      requestedAmount,
+      notes,
+      requestType = "RESTOCK",
+      submissionBatchId,
+    } = req.body;
     const userId = (req as any).user?.id;
 
     if (!userId) {
@@ -79,6 +86,10 @@ export const createRestockRequest = async (req: Request, res: Response): Promise
         requestedAmount,
         notes,
         requestType,
+        submissionBatchId:
+          typeof submissionBatchId === "string" && submissionBatchId.trim()
+            ? submissionBatchId.trim()
+            : undefined,
         status: "waiting_for_approval", // Changed from "pending" to "waiting_for_approval"
       },
       include: {
@@ -557,16 +568,20 @@ export const updateRestockRequestStatus = async (req: Request, res: Response): P
 
     // Validate status transition
     const validStatuses = [
-      "waiting_for_approval", 
-      "pending", 
-      "approved", 
-      "in_transit", 
-      "fulfilled", 
-      "rejected", 
-      "cancelled"
+      "waiting_for_approval",
+      "pending",
+      "approved",
+      "approved_pending",
+      "in_transit",
+      "fulfilled",
+      "rejected",
+      "cancelled",
     ];
     if (!validStatuses.includes(status)) {
-      res.status(400).json({ error: "Invalid status. Must be one of: waiting_for_approval, pending, approved, in_transit, fulfilled, rejected, cancelled" });
+      res.status(400).json({
+        error:
+          "Invalid status. Must be one of: waiting_for_approval, pending, approved, approved_pending, in_transit, fulfilled, rejected, cancelled",
+      });
       return;
     }
 
