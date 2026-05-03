@@ -268,7 +268,7 @@ export const getShopInventory = async (req: Request, res: Response): Promise<any
 export const updateShopInventoryStock = async (req: Request, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
-    const { currentStock } = req.body;
+    const { currentStock, minStockPerItem, lowStockAlertsEnabled } = req.body;
     const userId = (req as any).user?.id;
 
     if (!userId) {
@@ -319,13 +319,42 @@ export const updateShopInventoryStock = async (req: Request, res: Response): Pro
       return;
     }
 
-    // Update stock
+    const updateData: {
+      currentStock?: number;
+      minStockPerItem?: number | null;
+      lowStockAlertsEnabled?: boolean;
+      updatedAt: Date;
+    } = { updatedAt: new Date() };
+
+    if (typeof currentStock === "number" && Number.isFinite(currentStock)) {
+      updateData.currentStock = Math.max(0, Math.floor(currentStock));
+    }
+    if (minStockPerItem !== undefined) {
+      if (minStockPerItem === null || minStockPerItem === "") {
+        updateData.minStockPerItem = null;
+      } else if (typeof minStockPerItem === "number" && Number.isFinite(minStockPerItem)) {
+        updateData.minStockPerItem = Math.max(0, Math.floor(minStockPerItem));
+      }
+    }
+    if (typeof lowStockAlertsEnabled === "boolean") {
+      updateData.lowStockAlertsEnabled = lowStockAlertsEnabled;
+    }
+
+    if (
+      updateData.currentStock === undefined &&
+      updateData.minStockPerItem === undefined &&
+      updateData.lowStockAlertsEnabled === undefined
+    ) {
+      res.status(400).json({
+        error:
+          "Provide at least one of: currentStock, minStockPerItem, lowStockAlertsEnabled",
+      });
+      return;
+    }
+
     const updatedInventory = await prisma.shopInventory.update({
       where: { id },
-      data: {
-        currentStock,
-        updatedAt: new Date(),
-      },
+      data: updateData as any,
       include: {
         shop: true,
         product: true,
@@ -336,8 +365,9 @@ export const updateShopInventoryStock = async (req: Request, res: Response): Pro
     // Use type assertion to bridge until Prisma types are regenerated
     const threshold = (updatedInventory as any).minStockPerItem ?? updatedInventory.product.minStockLevel;
     const alertsEnabled = (updatedInventory as any).lowStockAlertsEnabled !== false;
-    if (alertsEnabled && threshold && currentStock <= threshold) {
-      const notificationMessage = `🚨 Low stock alert: ${updatedInventory.product.name} in ${updatedInventory.shop.name} has only ${currentStock} units remaining (min: ${threshold})`;
+    const stockAfter = updatedInventory.currentStock;
+    if (alertsEnabled && threshold && stockAfter <= threshold) {
+      const notificationMessage = `🚨 Low stock alert: ${updatedInventory.product.name} in ${updatedInventory.shop.name} has only ${stockAfter} units remaining (min: ${threshold})`;
       
       // Notify shop manager
       if (updatedInventory.shop.managerId) {
