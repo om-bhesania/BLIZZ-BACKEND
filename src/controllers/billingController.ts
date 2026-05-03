@@ -7,12 +7,37 @@ import { getSocketService } from "../services/socketService";
 import { logActivity } from "../utils/audit";
 import { ParsedQs } from "qs";
 
+/**
+ * Global invoice numbers: BLIZZ/YYYY/NNNNN (5-digit sequence per year).
+ * Uses max existing sequence for the year (not latest row by createdAt).
+ */
+async function computeNextBlizzInvoiceNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `BLIZZ/${year}/`;
+  const rows = await prisma.billing.findMany({
+    where: {
+      invoiceNumber: { startsWith: prefix },
+    },
+    select: { invoiceNumber: true },
+  });
+  let maxSeq = 0;
+  for (const row of rows) {
+    const inv = row.invoiceNumber;
+    if (!inv || !inv.startsWith(prefix)) continue;
+    const tail = inv.slice(prefix.length);
+    const n = parseInt(tail, 10);
+    if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
+  }
+  const nextSeq = String(maxSeq + 1).padStart(5, "0");
+  return `${prefix}${nextSeq}`;
+}
+
 // Create billing
 export const createBilling = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       shopId,
-      invoiceNumber,
+      invoiceNumber: _clientInvoiceIgnored,
       customerName,
       customerEmail,
       customerContact,
@@ -147,29 +172,8 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    // Create billing transaction (backward-compatible with/without createdBy fields)
-    // Auto-generate invoice number if not provided: BLISS/YYYY/00001
-    let nextInvoiceNumber = invoiceNumber as string | undefined;
-    if (!nextInvoiceNumber) {
-      try {
-        const year = new Date().getFullYear();
-        const prefix = `BLIZZ/${year}`;
-        const latest = await (prisma as any).billing.findFirst({
-          where: { invoiceNumber: { startsWith: prefix } } as any,
-          orderBy: [{ createdAt: "desc" }],
-          select: { invoiceNumber: true } as any,
-        });
-        const lastSeq = (() => {
-          const raw = (latest as any)?.invoiceNumber || "";
-          const parts = raw.split("/");
-          const tail = parts[2] || "00000";
-          const n = parseInt(tail, 10);
-          return Number.isFinite(n) ? n : 0;
-        })();
-        const nextSeq = String(lastSeq + 1).padStart(5, "0");
-        nextInvoiceNumber = `${prefix}/${nextSeq}`;
-      } catch {}
-    }
+    // Server-assigned invoice number only (stored on Billing; max+1 from DB per year).
+    let nextInvoiceNumber = await computeNextBlizzInvoiceNumber();
 
     const baseData: any = {
       shopId: invoiceType === "FACTORY" ? null : shopId,
@@ -185,16 +189,39 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       invoiceType,
     };
 
-    // Create billing with proper fields
-    const billing = await prisma.billing.create({
-      data: {
-        ...baseData,
-        invoiceNumber: nextInvoiceNumber || null,
-        createdBy: user.publicId,
-        createdByRole: user.role || null,
-      },
-      include: { shop: true },
-    });
+    const createBillingRow = (num: string) =>
+      prisma.billing.create({
+        data: {
+          ...baseData,
+          invoiceNumber: num,
+          createdBy: user.publicId,
+          createdByRole: user.role || null,
+        },
+        include: { shop: true },
+      });
+
+    let billing: Awaited<ReturnType<typeof createBillingRow>> | undefined;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const num =
+        attempt === 0
+          ? nextInvoiceNumber
+          : await computeNextBlizzInvoiceNumber();
+      try {
+        billing = await createBillingRow(num);
+        lastError = undefined;
+        break;
+      } catch (err: unknown) {
+        lastError = err;
+        const code = (err as { code?: string })?.code;
+        if (code !== "P2002") throw err;
+      }
+    }
+    if (!billing) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("Could not assign unique invoice number");
+    }
 
     // Update stock levels only for shop invoices
     if (invoiceType === "SHOP") {
@@ -381,7 +408,7 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// Get next invoice number
+// Get next invoice number (same rule as create — max BLIZZ/YYYY/* + 1)
 export const getNextInvoiceNumber = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = (req as any).user?.publicId;
@@ -390,29 +417,8 @@ export const getNextInvoiceNumber = async (req: Request, res: Response): Promise
       return;
     }
 
-    const year = new Date().getFullYear();
-    const prefix = `BLIZZ/${year}`;
-    try {
-      const latest = await (prisma as any).billing.findFirst({
-        where: { invoiceNumber: { startsWith: prefix } } as any,
-        orderBy: [{ createdAt: "desc" }],
-        select: { invoiceNumber: true } as any,
-      });
-      const lastSeq = (() => {
-        const raw = (latest as any)?.invoiceNumber || "";
-        const parts = raw.split("/");
-        const tail = parts[2] || "00000";
-        const n = parseInt(tail, 10);
-        return Number.isFinite(n) ? n : 0;
-      })();
-      const nextSeq = String(lastSeq + 1).padStart(5, "0");
-      const nextInvoiceNumber = `${prefix}/${nextSeq}`;
-      res.json({ invoiceNumber: nextInvoiceNumber });
-      return;
-    } catch (e) {
-      res.json({ invoiceNumber: `${prefix}/00001` });
-      return;
-    }
+    const invoiceNumber = await computeNextBlizzInvoiceNumber();
+    res.json({ invoiceNumber });
   } catch (error) {
     logger.error("Error computing next invoice number:", error);
     res.status(500).json({ error: "Failed to compute next invoice number" });
