@@ -42,10 +42,10 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       customerEmail,
       customerContact,
       items,
-      subtotal,
-      tax = 0,
+      subtotal: _clientSubtotalIgnored,
+      tax: _clientTaxIgnored = 0,
       discount = 0,
-      total,
+      total: _clientTotalIgnored,
       invoiceType = "SHOP", // SHOP | FACTORY
     } = req.body;
     
@@ -112,7 +112,7 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
     const stockUpdates = [];
 
     for (const item of items) {
-      const { productId, quantity, unitPrice } = item;
+      const { productId, quantity } = item;
       
       // Check if product exists
       const product = await prisma.product.findUnique({
@@ -125,13 +125,17 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       }
 
       // For factory invoices, skip shop inventory validation
+      const effectiveUnitPrice = Number(product.unitPrice || 0);
+
       if (invoiceType === "FACTORY") {
-        // Calculate item total
-        const itemTotal = quantity * unitPrice;
-        
+        // Calculate item total based on product pricing
+        const itemTotal = quantity * effectiveUnitPrice;
+
         validatedItems.push({
-          ...item,
+          productId,
           productName: item.productName || product.name,
+          quantity,
+          unitPrice: effectiveUnitPrice,
           total: itemTotal,
         });
       } else {
@@ -155,12 +159,14 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
           return;
         }
 
-        // Calculate item total
-        const itemTotal = quantity * unitPrice;
-        
+        // Calculate item total based on product pricing
+        const itemTotal = quantity * effectiveUnitPrice;
+
         validatedItems.push({
-          ...item,
+          productId,
           productName: item.productName || product.name,
+          quantity,
+          unitPrice: effectiveUnitPrice,
           total: itemTotal,
         });
 
@@ -174,6 +180,15 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
 
     // Server-assigned invoice number only (stored on Billing; max+1 from DB per year).
     let nextInvoiceNumber = await computeNextBlizzInvoiceNumber();
+    const normalizedSubtotal = Number(
+      validatedItems.reduce(
+        (sum, line: any) => sum + Number(line.unitPrice || 0) * Number(line.quantity || 0),
+        0
+      )
+    ); // GST-inclusive line totals from product prices
+    const normalizedDiscount = Number(discount || 0);
+    const tax = Number((normalizedSubtotal * (5 / 105)).toFixed(2)); // Extract GST component (5% inclusive)
+    const total = Number((normalizedSubtotal - normalizedDiscount).toFixed(2));
 
     const baseData: any = {
       shopId: invoiceType === "FACTORY" ? null : shopId,
@@ -181,7 +196,7 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       customerEmail,
       customerContact,
       items: validatedItems,
-      subtotal,
+      subtotal: normalizedSubtotal,
       tax,
       discount,
       total,
