@@ -3,7 +3,9 @@ import express, { RequestHandler } from "express";
 import { authenticateToken } from "../middlewares/auth";
 import {
   createBilling,
+  createPaymentMethod,
   getNextInvoiceNumber,
+  getPaymentMethods,
   getBillingById,
   getBillings,
   getBillingStats,
@@ -263,6 +265,10 @@ billingRoutes.post("/", createBilling as RequestHandler);
 
 // Get next invoice number
 billingRoutes.get("/next-invoice-number", getNextInvoiceNumber as RequestHandler);
+
+// Payment method master
+billingRoutes.get("/payment-methods", getPaymentMethods as RequestHandler);
+billingRoutes.post("/payment-methods", createPaymentMethod as RequestHandler);
 
 /**
  * @swagger

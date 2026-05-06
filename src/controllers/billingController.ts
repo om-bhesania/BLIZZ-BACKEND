@@ -7,6 +7,15 @@ import { getSocketService } from "../services/socketService";
 import { logActivity } from "../utils/audit";
 import { ParsedQs } from "qs";
 
+// Prisma client types can lag after schema edits on Windows (EPERM on generate).
+// Use a narrow fallback delegate so TypeScript remains buildable until regenerate.
+const paymentMethodDelegate = (prisma as any).paymentMethod as {
+  findUnique: (args: any) => Promise<any>;
+  findMany: (args?: any) => Promise<any[]>;
+  findFirst: (args: any) => Promise<any>;
+  create: (args: any) => Promise<any>;
+};
+
 /**
  * Global invoice numbers: BLIZZ/YYYY/NNNNN (5-digit sequence per year).
  * Uses max existing sequence for the year (not latest row by createdAt).
@@ -46,6 +55,8 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       tax: _clientTaxIgnored = 0,
       discount = 0,
       total: _clientTotalIgnored,
+      paymentMethodId,
+      paymentBreakdown,
       invoiceType = "SHOP", // SHOP | FACTORY
     } = req.body;
     
@@ -178,6 +189,80 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       }
     }
 
+    const selectedMethodId = typeof paymentMethodId === "string" ? paymentMethodId : "";
+    let selectedMethod = null;
+    if (selectedMethodId) {
+      selectedMethod = await paymentMethodDelegate.findUnique({
+        where: { id: selectedMethodId },
+      });
+      if (!selectedMethod || !selectedMethod.isActive) {
+        res.status(400).json({ error: "Invalid payment method selected" });
+        return;
+      }
+    }
+
+    type PaymentBreakdownItem = { paymentMethodId?: string; amount?: number | string };
+    const breakdownInput: PaymentBreakdownItem[] = Array.isArray(paymentBreakdown)
+      ? paymentBreakdown
+      : [];
+    const isPartialPayment =
+      selectedMethod?.name.toLowerCase() === "partial payment" ||
+      breakdownInput.length > 0;
+
+    let normalizedBreakdown: Array<{
+      paymentMethodId: string;
+      paymentMethodName: string;
+      amount: number;
+    }> = [];
+
+    if (isPartialPayment) {
+      if (!selectedMethod || selectedMethod.name.toLowerCase() !== "partial payment") {
+        res.status(400).json({ error: "Select 'Partial Payment' as payment method for split payments" });
+        return;
+      }
+      if (breakdownInput.length === 0) {
+        res.status(400).json({ error: "Please add at least one partial payment entry" });
+        return;
+      }
+
+      const methodIds = breakdownInput
+        .map((entry) => String(entry.paymentMethodId || "").trim())
+        .filter((id) => !!id);
+
+      const methods = await paymentMethodDelegate.findMany({
+        where: {
+          id: { in: methodIds },
+          isActive: true,
+        },
+      });
+      const methodMap = new Map(methods.map((m) => [m.id, m]));
+
+      try {
+        normalizedBreakdown = breakdownInput.map((entry) => {
+          const methodId = String(entry.paymentMethodId || "").trim();
+          const amount = Number(entry.amount || 0);
+          const method = methodMap.get(methodId);
+          if (!method || !method.isActive) {
+            throw new Error("Invalid payment method in partial payment");
+          }
+          if (!Number.isFinite(amount) || amount <= 0) {
+            throw new Error("Partial payment amounts must be greater than 0");
+          }
+          if (method.name.toLowerCase() === "partial payment") {
+            throw new Error("Partial payment cannot contain itself");
+          }
+          return {
+            paymentMethodId: method.id,
+            paymentMethodName: method.name,
+            amount: Number(amount.toFixed(2)),
+          };
+        });
+      } catch (e: any) {
+        res.status(400).json({ error: e?.message || "Invalid partial payment breakdown" });
+        return;
+      }
+    }
+
     // Server-assigned invoice number only (stored on Billing; max+1 from DB per year).
     let nextInvoiceNumber = await computeNextBlizzInvoiceNumber();
     const normalizedSubtotal = Number(
@@ -189,6 +274,14 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
     const normalizedDiscount = Number(discount || 0);
     const tax = Number((normalizedSubtotal * (5 / 105)).toFixed(2)); // Extract GST component (5% inclusive)
     const total = Number((normalizedSubtotal - normalizedDiscount).toFixed(2));
+    const paidAmount = Number(
+      normalizedBreakdown.reduce((sum, p) => sum + p.amount, 0).toFixed(2)
+    );
+    const paymentStatus = isPartialPayment
+      ? paidAmount >= total
+        ? "paid"
+        : "pending"
+      : "pending";
 
     const baseData: any = {
       shopId: invoiceType === "FACTORY" ? null : shopId,
@@ -200,7 +293,10 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       tax,
       discount,
       total,
-      paymentStatus: "pending",
+      paymentStatus,
+      paymentMethod: selectedMethod?.name || null,
+      paymentMethodId: selectedMethod?.id || null,
+      paymentBreakdown: isPartialPayment ? normalizedBreakdown : null,
       invoiceType,
     };
 
@@ -437,6 +533,51 @@ export const getNextInvoiceNumber = async (req: Request, res: Response): Promise
   } catch (error) {
     logger.error("Error computing next invoice number:", error);
     res.status(500).json({ error: "Failed to compute next invoice number" });
+  }
+};
+
+export const getPaymentMethods = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const methods = await paymentMethodDelegate.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+    });
+    res.status(200).json(methods);
+  } catch (error) {
+    logger.error("Error fetching payment methods:", error);
+    res.status(500).json({ error: "Failed to fetch payment methods" });
+  }
+};
+
+export const createPaymentMethod = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user?.publicId;
+    const name = String(req.body?.name || "").trim();
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (!name) {
+      res.status(400).json({ error: "Payment method name is required" });
+      return;
+    }
+
+    const existing = await paymentMethodDelegate.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+    });
+    if (existing) {
+      res.status(409).json({ error: "Payment method already exists" });
+      return;
+    }
+
+    const method = await paymentMethodDelegate.create({
+      data: { name },
+    });
+    res.status(201).json(method);
+  } catch (error) {
+    logger.error("Error creating payment method:", error);
+    res.status(500).json({ error: "Failed to create payment method" });
   }
 };
 

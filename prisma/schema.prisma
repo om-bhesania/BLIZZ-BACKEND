@@ -219,6 +219,9 @@ model Billing {
   discount      Float    @default(0)
   total         Float
   paymentStatus String   @default("pending")
+  paymentMethod String?
+  paymentMethodId String?
+  paymentBreakdown Json?
   isParcel      Boolean  @default(false) // New field for parcel tracking
   parcelType    String?  // family_pack, normal_scoop, etc.
   parcelSize    String?  // small, medium, large
@@ -229,9 +232,20 @@ model Billing {
   invoiceNumber String?  @unique
   invoiceType   String   @default("SHOP") // SHOP | FACTORY
   shop          Shop?    @relation(fields: [shopId], references: [id])
+  paymentMethodRef PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   
   @@index([isParcel])
   @@index([parcelType])
+  @@index([paymentMethodId])
+}
+
+model PaymentMethod {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  billings  Billing[]
 }
 
 model Notification {
