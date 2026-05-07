@@ -14,7 +14,13 @@ import {
 
 const billingRoutes = express.Router();
 
-// Apply authentication middleware to all routes
+// Payment method master (global/no RBAC)
+billingRoutes.get("/payment-method", getPaymentMethods as RequestHandler);
+billingRoutes.post("/payment-method", createPaymentMethod as RequestHandler);
+billingRoutes.get("/payment-methods", getPaymentMethods as RequestHandler);
+billingRoutes.post("/payment-methods", createPaymentMethod as RequestHandler);
+
+// Apply authentication middleware to protected billing routes
 billingRoutes.use(authenticateToken as any);
 
 /**
@@ -265,10 +271,6 @@ billingRoutes.post("/", createBilling as RequestHandler);
 
 // Get next invoice number
 billingRoutes.get("/next-invoice-number", getNextInvoiceNumber as RequestHandler);
-
-// Payment method master
-billingRoutes.get("/payment-methods", getPaymentMethods as RequestHandler);
-billingRoutes.post("/payment-methods", createPaymentMethod as RequestHandler);
 
 /**
  * @swagger

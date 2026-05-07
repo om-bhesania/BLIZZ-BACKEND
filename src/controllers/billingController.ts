@@ -551,13 +551,8 @@ export const getPaymentMethods = async (_req: Request, res: Response): Promise<v
 
 export const createPaymentMethod = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.publicId;
     const name = String(req.body?.name || "").trim();
 
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
     if (!name) {
       res.status(400).json({ error: "Payment method name is required" });
       return;
