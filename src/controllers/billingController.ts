@@ -14,6 +14,7 @@ const paymentMethodDelegate = (prisma as any).paymentMethod as {
   findMany: (args?: any) => Promise<any[]>;
   findFirst: (args: any) => Promise<any>;
   create: (args: any) => Promise<any>;
+  delete: (args: any) => Promise<any>;
 };
 
 /**
@@ -573,6 +574,44 @@ export const createPaymentMethod = async (req: Request, res: Response): Promise<
   } catch (error) {
     logger.error("Error creating payment method:", error);
     res.status(500).json({ error: "Failed to create payment method" });
+  }
+};
+
+export const deletePaymentMethod = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userEmail = String((req as any).user?.email || "").toLowerCase();
+    if (userEmail !== "bhesaniaom@gmail.com") {
+      res.status(403).json({ error: "Only bhesaniaom@gmail.com can delete payment methods" });
+      return;
+    }
+
+    const methodId = String(req.params?.id || "").trim();
+    if (!methodId) {
+      res.status(400).json({ error: "Payment method id is required" });
+      return;
+    }
+
+    const existing = await paymentMethodDelegate.findUnique({ where: { id: methodId } });
+    if (!existing) {
+      res.status(404).json({ error: "Payment method not found" });
+      return;
+    }
+
+    const usageCount = await prisma.billing.count({
+      where: { paymentMethodId: methodId },
+    });
+    if (usageCount > 0) {
+      res.status(409).json({
+        error: "Payment method is used in invoices and cannot be deleted",
+      });
+      return;
+    }
+
+    await paymentMethodDelegate.delete({ where: { id: methodId } });
+    res.status(200).json({ message: "Payment method deleted successfully" });
+  } catch (error) {
+    logger.error("Error deleting payment method:", error);
+    res.status(500).json({ error: "Failed to delete payment method" });
   }
 };
 

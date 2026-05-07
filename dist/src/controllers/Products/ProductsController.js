@@ -284,6 +284,7 @@ const updateProduct = async (req, res) => {
         const product = await client_1.prisma.product.update({
             where: { id },
             data: {
+                sku,
                 name,
                 description,
                 categoryId,
@@ -350,8 +351,8 @@ const updateProduct = async (req, res) => {
         res.json(product);
     }
     catch (error) {
-        logger_1.logger.error("Error updating product:", error);
-        console.error("Full error details:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        logger_1.logger.error("Error updating product");
+        console.error("Error updating product:", error);
         // Check for specific Prisma errors
         if (error.code === "P2002") {
             return res

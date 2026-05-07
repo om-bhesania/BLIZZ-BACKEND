@@ -12,7 +12,7 @@ const ProductsController_1 = require("./Products/ProductsController");
 // Create restock request
 const createRestockRequest = async (req, res) => {
     try {
-        const { shopId, productId, requestedAmount, notes, requestType = "RESTOCK" } = req.body;
+        const { shopId, productId, requestedAmount, notes, requestType = "RESTOCK", submissionBatchId, } = req.body;
         const userId = req.user?.id;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
@@ -69,6 +69,9 @@ const createRestockRequest = async (req, res) => {
                 requestedAmount,
                 notes,
                 requestType,
+                submissionBatchId: typeof submissionBatchId === "string" && submissionBatchId.trim()
+                    ? submissionBatchId.trim()
+                    : undefined,
                 status: "waiting_for_approval", // Changed from "pending" to "waiting_for_approval"
             },
             include: {
@@ -494,13 +497,16 @@ const updateRestockRequestStatus = async (req, res) => {
             "waiting_for_approval",
             "pending",
             "approved",
+            "approved_pending",
             "in_transit",
             "fulfilled",
             "rejected",
-            "cancelled"
+            "cancelled",
         ];
         if (!validStatuses.includes(status)) {
-            res.status(400).json({ error: "Invalid status. Must be one of: waiting_for_approval, pending, approved, in_transit, fulfilled, rejected, cancelled" });
+            res.status(400).json({
+                error: "Invalid status. Must be one of: waiting_for_approval, pending, approved, approved_pending, in_transit, fulfilled, rejected, cancelled",
+            });
             return;
         }
         // Update restock request status

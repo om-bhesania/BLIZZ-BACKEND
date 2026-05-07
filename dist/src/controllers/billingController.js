@@ -1,16 +1,45 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getBillingStats = exports.updateBillingPaymentStatus = exports.getBillingById = exports.getBillings = exports.getNextInvoiceNumber = exports.createBilling = void 0;
+exports.getBillingStats = exports.updateBillingPaymentStatus = exports.getBillingById = exports.getBillings = exports.deletePaymentMethod = exports.createPaymentMethod = exports.getPaymentMethods = exports.getNextInvoiceNumber = exports.createBilling = void 0;
 const client_1 = require("../config/client");
 const logger_1 = require("../utils/logger");
 const roles_1 = require("../config/roles");
 const NotificationsController_1 = require("./NotificationsController");
 const socketService_1 = require("../services/socketService");
 const audit_1 = require("../utils/audit");
+// Prisma client types can lag after schema edits on Windows (EPERM on generate).
+// Use a narrow fallback delegate so TypeScript remains buildable until regenerate.
+const paymentMethodDelegate = client_1.prisma.paymentMethod;
+/**
+ * Global invoice numbers: BLIZZ/YYYY/NNNNN (5-digit sequence per year).
+ * Uses max existing sequence for the year (not latest row by createdAt).
+ */
+async function computeNextBlizzInvoiceNumber() {
+    const year = new Date().getFullYear();
+    const prefix = `BLIZZ/${year}/`;
+    const rows = await client_1.prisma.billing.findMany({
+        where: {
+            invoiceNumber: { startsWith: prefix },
+        },
+        select: { invoiceNumber: true },
+    });
+    let maxSeq = 0;
+    for (const row of rows) {
+        const inv = row.invoiceNumber;
+        if (!inv || !inv.startsWith(prefix))
+            continue;
+        const tail = inv.slice(prefix.length);
+        const n = parseInt(tail, 10);
+        if (Number.isFinite(n) && n > maxSeq)
+            maxSeq = n;
+    }
+    const nextSeq = String(maxSeq + 1).padStart(5, "0");
+    return `${prefix}${nextSeq}`;
+}
 // Create billing
 const createBilling = async (req, res) => {
     try {
-        const { shopId, invoiceNumber, customerName, customerEmail, customerContact, items, subtotal, tax = 0, discount = 0, total, invoiceType = "SHOP", // SHOP | FACTORY
+        const { shopId, invoiceNumber: _clientInvoiceIgnored, customerName, customerEmail, customerContact, items, subtotal: _clientSubtotalIgnored, tax: _clientTaxIgnored = 0, discount = 0, total: _clientTotalIgnored, paymentMethodId, paymentBreakdown, invoiceType = "SHOP", // SHOP | FACTORY
          } = req.body;
         const userId = req.user?.publicId;
         if (!userId) {
@@ -65,7 +94,7 @@ const createBilling = async (req, res) => {
         const validatedItems = [];
         const stockUpdates = [];
         for (const item of items) {
-            const { productId, quantity, unitPrice } = item;
+            const { productId, quantity } = item;
             // Check if product exists
             const product = await client_1.prisma.product.findUnique({
                 where: { id: productId },
@@ -75,12 +104,15 @@ const createBilling = async (req, res) => {
                 return;
             }
             // For factory invoices, skip shop inventory validation
+            const effectiveUnitPrice = Number(product.unitPrice || 0);
             if (invoiceType === "FACTORY") {
-                // Calculate item total
-                const itemTotal = quantity * unitPrice;
+                // Calculate item total based on product pricing
+                const itemTotal = quantity * effectiveUnitPrice;
                 validatedItems.push({
-                    ...item,
+                    productId,
                     productName: item.productName || product.name,
+                    quantity,
+                    unitPrice: effectiveUnitPrice,
                     total: itemTotal,
                 });
             }
@@ -102,11 +134,13 @@ const createBilling = async (req, res) => {
                     });
                     return;
                 }
-                // Calculate item total
-                const itemTotal = quantity * unitPrice;
+                // Calculate item total based on product pricing
+                const itemTotal = quantity * effectiveUnitPrice;
                 validatedItems.push({
-                    ...item,
+                    productId,
                     productName: item.productName || product.name,
+                    quantity,
+                    unitPrice: effectiveUnitPrice,
                     total: itemTotal,
                 });
                 // Prepare stock update for shop invoices
@@ -116,53 +150,128 @@ const createBilling = async (req, res) => {
                 });
             }
         }
-        // Create billing transaction (backward-compatible with/without createdBy fields)
-        // Auto-generate invoice number if not provided: BLISS/YYYY/00001
-        let nextInvoiceNumber = invoiceNumber;
-        if (!nextInvoiceNumber) {
-            try {
-                const year = new Date().getFullYear();
-                const prefix = `BLIZZ/${year}`;
-                const latest = await client_1.prisma.billing.findFirst({
-                    where: { invoiceNumber: { startsWith: prefix } },
-                    orderBy: [{ createdAt: "desc" }],
-                    select: { invoiceNumber: true },
-                });
-                const lastSeq = (() => {
-                    const raw = latest?.invoiceNumber || "";
-                    const parts = raw.split("/");
-                    const tail = parts[2] || "00000";
-                    const n = parseInt(tail, 10);
-                    return Number.isFinite(n) ? n : 0;
-                })();
-                const nextSeq = String(lastSeq + 1).padStart(5, "0");
-                nextInvoiceNumber = `${prefix}/${nextSeq}`;
+        const selectedMethodId = typeof paymentMethodId === "string" ? paymentMethodId : "";
+        let selectedMethod = null;
+        if (selectedMethodId) {
+            selectedMethod = await paymentMethodDelegate.findUnique({
+                where: { id: selectedMethodId },
+            });
+            if (!selectedMethod || !selectedMethod.isActive) {
+                res.status(400).json({ error: "Invalid payment method selected" });
+                return;
             }
-            catch { }
         }
+        const breakdownInput = Array.isArray(paymentBreakdown)
+            ? paymentBreakdown
+            : [];
+        const isPartialPayment = selectedMethod?.name.toLowerCase() === "partial payment" ||
+            breakdownInput.length > 0;
+        let normalizedBreakdown = [];
+        if (isPartialPayment) {
+            if (!selectedMethod || selectedMethod.name.toLowerCase() !== "partial payment") {
+                res.status(400).json({ error: "Select 'Partial Payment' as payment method for split payments" });
+                return;
+            }
+            if (breakdownInput.length === 0) {
+                res.status(400).json({ error: "Please add at least one partial payment entry" });
+                return;
+            }
+            const methodIds = breakdownInput
+                .map((entry) => String(entry.paymentMethodId || "").trim())
+                .filter((id) => !!id);
+            const methods = await paymentMethodDelegate.findMany({
+                where: {
+                    id: { in: methodIds },
+                    isActive: true,
+                },
+            });
+            const methodMap = new Map(methods.map((m) => [m.id, m]));
+            try {
+                normalizedBreakdown = breakdownInput.map((entry) => {
+                    const methodId = String(entry.paymentMethodId || "").trim();
+                    const amount = Number(entry.amount || 0);
+                    const method = methodMap.get(methodId);
+                    if (!method || !method.isActive) {
+                        throw new Error("Invalid payment method in partial payment");
+                    }
+                    if (!Number.isFinite(amount) || amount <= 0) {
+                        throw new Error("Partial payment amounts must be greater than 0");
+                    }
+                    if (method.name.toLowerCase() === "partial payment") {
+                        throw new Error("Partial payment cannot contain itself");
+                    }
+                    return {
+                        paymentMethodId: method.id,
+                        paymentMethodName: method.name,
+                        amount: Number(amount.toFixed(2)),
+                    };
+                });
+            }
+            catch (e) {
+                res.status(400).json({ error: e?.message || "Invalid partial payment breakdown" });
+                return;
+            }
+        }
+        // Server-assigned invoice number only (stored on Billing; max+1 from DB per year).
+        let nextInvoiceNumber = await computeNextBlizzInvoiceNumber();
+        const normalizedSubtotal = Number(validatedItems.reduce((sum, line) => sum + Number(line.unitPrice || 0) * Number(line.quantity || 0), 0)); // GST-inclusive line totals from product prices
+        const normalizedDiscount = Number(discount || 0);
+        const tax = Number((normalizedSubtotal * (5 / 105)).toFixed(2)); // Extract GST component (5% inclusive)
+        const total = Number((normalizedSubtotal - normalizedDiscount).toFixed(2));
+        const paidAmount = Number(normalizedBreakdown.reduce((sum, p) => sum + p.amount, 0).toFixed(2));
+        const paymentStatus = isPartialPayment
+            ? paidAmount >= total
+                ? "paid"
+                : "pending"
+            : "pending";
         const baseData = {
             shopId: invoiceType === "FACTORY" ? null : shopId,
             customerName,
             customerEmail,
             customerContact,
             items: validatedItems,
-            subtotal,
+            subtotal: normalizedSubtotal,
             tax,
             discount,
             total,
-            paymentStatus: "pending",
+            paymentStatus,
+            paymentMethod: selectedMethod?.name || null,
+            paymentMethodId: selectedMethod?.id || null,
+            paymentBreakdown: isPartialPayment ? normalizedBreakdown : null,
             invoiceType,
         };
-        // Create billing with proper fields
-        const billing = await client_1.prisma.billing.create({
+        const createBillingRow = (num) => client_1.prisma.billing.create({
             data: {
                 ...baseData,
-                invoiceNumber: nextInvoiceNumber || null,
+                invoiceNumber: num,
                 createdBy: user.publicId,
                 createdByRole: user.role || null,
             },
             include: { shop: true },
         });
+        let billing;
+        let lastError;
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const num = attempt === 0
+                ? nextInvoiceNumber
+                : await computeNextBlizzInvoiceNumber();
+            try {
+                billing = await createBillingRow(num);
+                lastError = undefined;
+                break;
+            }
+            catch (err) {
+                lastError = err;
+                const code = err?.code;
+                if (code !== "P2002")
+                    throw err;
+            }
+        }
+        if (!billing) {
+            throw lastError instanceof Error
+                ? lastError
+                : new Error("Could not assign unique invoice number");
+        }
         // Update stock levels only for shop invoices
         if (invoiceType === "SHOP") {
             for (const update of stockUpdates) {
@@ -334,7 +443,7 @@ const createBilling = async (req, res) => {
     }
 };
 exports.createBilling = createBilling;
-// Get next invoice number
+// Get next invoice number (same rule as create — max BLIZZ/YYYY/* + 1)
 const getNextInvoiceNumber = async (req, res) => {
     try {
         const userId = req.user?.publicId;
@@ -342,30 +451,8 @@ const getNextInvoiceNumber = async (req, res) => {
             res.status(401).json({ error: "Unauthorized" });
             return;
         }
-        const year = new Date().getFullYear();
-        const prefix = `BLIZZ/${year}`;
-        try {
-            const latest = await client_1.prisma.billing.findFirst({
-                where: { invoiceNumber: { startsWith: prefix } },
-                orderBy: [{ createdAt: "desc" }],
-                select: { invoiceNumber: true },
-            });
-            const lastSeq = (() => {
-                const raw = latest?.invoiceNumber || "";
-                const parts = raw.split("/");
-                const tail = parts[2] || "00000";
-                const n = parseInt(tail, 10);
-                return Number.isFinite(n) ? n : 0;
-            })();
-            const nextSeq = String(lastSeq + 1).padStart(5, "0");
-            const nextInvoiceNumber = `${prefix}/${nextSeq}`;
-            res.json({ invoiceNumber: nextInvoiceNumber });
-            return;
-        }
-        catch (e) {
-            res.json({ invoiceNumber: `${prefix}/00001` });
-            return;
-        }
+        const invoiceNumber = await computeNextBlizzInvoiceNumber();
+        res.json({ invoiceNumber });
     }
     catch (error) {
         logger_1.logger.error("Error computing next invoice number:", error);
@@ -373,6 +460,80 @@ const getNextInvoiceNumber = async (req, res) => {
     }
 };
 exports.getNextInvoiceNumber = getNextInvoiceNumber;
+const getPaymentMethods = async (_req, res) => {
+    try {
+        const methods = await paymentMethodDelegate.findMany({
+            where: { isActive: true },
+            orderBy: { name: "asc" },
+        });
+        res.status(200).json(methods);
+    }
+    catch (error) {
+        logger_1.logger.error("Error fetching payment methods:", error);
+        res.status(500).json({ error: "Failed to fetch payment methods" });
+    }
+};
+exports.getPaymentMethods = getPaymentMethods;
+const createPaymentMethod = async (req, res) => {
+    try {
+        const name = String(req.body?.name || "").trim();
+        if (!name) {
+            res.status(400).json({ error: "Payment method name is required" });
+            return;
+        }
+        const existing = await paymentMethodDelegate.findFirst({
+            where: { name: { equals: name, mode: "insensitive" } },
+        });
+        if (existing) {
+            res.status(409).json({ error: "Payment method already exists" });
+            return;
+        }
+        const method = await paymentMethodDelegate.create({
+            data: { name },
+        });
+        res.status(201).json(method);
+    }
+    catch (error) {
+        logger_1.logger.error("Error creating payment method:", error);
+        res.status(500).json({ error: "Failed to create payment method" });
+    }
+};
+exports.createPaymentMethod = createPaymentMethod;
+const deletePaymentMethod = async (req, res) => {
+    try {
+        const userEmail = String(req.user?.email || "").toLowerCase();
+        if (userEmail !== "bhesaniaom@gmail.com") {
+            res.status(403).json({ error: "Only bhesaniaom@gmail.com can delete payment methods" });
+            return;
+        }
+        const methodId = String(req.params?.id || "").trim();
+        if (!methodId) {
+            res.status(400).json({ error: "Payment method id is required" });
+            return;
+        }
+        const existing = await paymentMethodDelegate.findUnique({ where: { id: methodId } });
+        if (!existing) {
+            res.status(404).json({ error: "Payment method not found" });
+            return;
+        }
+        const usageCount = await client_1.prisma.billing.count({
+            where: { paymentMethodId: methodId },
+        });
+        if (usageCount > 0) {
+            res.status(409).json({
+                error: "Payment method is used in invoices and cannot be deleted",
+            });
+            return;
+        }
+        await paymentMethodDelegate.delete({ where: { id: methodId } });
+        res.status(200).json({ message: "Payment method deleted successfully" });
+    }
+    catch (error) {
+        logger_1.logger.error("Error deleting payment method:", error);
+        res.status(500).json({ error: "Failed to delete payment method" });
+    }
+};
+exports.deletePaymentMethod = deletePaymentMethod;
 // Get billings by shop ID
 const getBillings = async (req, res) => {
     try {

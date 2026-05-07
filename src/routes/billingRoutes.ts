@@ -4,6 +4,7 @@ import { authenticateToken } from "../middlewares/auth";
 import {
   createBilling,
   createPaymentMethod,
+  deletePaymentMethod,
   getNextInvoiceNumber,
   getPaymentMethods,
   getBillingById,
@@ -22,6 +23,9 @@ billingRoutes.post("/payment-methods", createPaymentMethod as RequestHandler);
 
 // Apply authentication middleware to protected billing routes
 billingRoutes.use(authenticateToken as any);
+
+// Restricted payment method delete (allowed account only)
+billingRoutes.delete("/payment-methods/:id", deletePaymentMethod as RequestHandler);
 
 /**
  * @swagger

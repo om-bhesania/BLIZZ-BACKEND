@@ -7,8 +7,15 @@ const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middlewares/auth");
 const billingController_1 = require("../controllers/billingController");
 const billingRoutes = express_1.default.Router();
-// Apply authentication middleware to all routes
+// Payment method master (global/no RBAC)
+billingRoutes.get("/payment-method", billingController_1.getPaymentMethods);
+billingRoutes.post("/payment-method", billingController_1.createPaymentMethod);
+billingRoutes.get("/payment-methods", billingController_1.getPaymentMethods);
+billingRoutes.post("/payment-methods", billingController_1.createPaymentMethod);
+// Apply authentication middleware to protected billing routes
 billingRoutes.use(auth_1.authenticateToken);
+// Restricted payment method delete (allowed account only)
+billingRoutes.delete("/payment-methods/:id", billingController_1.deletePaymentMethod);
 /**
  * @swagger
  * tags:
